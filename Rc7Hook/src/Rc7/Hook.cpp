@@ -103,6 +103,11 @@ bool Rc7Hook::Enable() {
 
 			this->OriginalRva = fnRva;
 
+			// incase the func in IAT was not found, do this
+			if (!(*this->OriginalFunction)) {
+				(*this->OriginalFunction) = (PVOID)(modBase + fnRva);
+			}
+			
 			PVOID jmpAddr = AllocateJmpNearModule(peModule.ImageBase, sizeof(jmpByteArray));
 			memcpy(&jmpByteArray[2], &hookFunction, sizeof(PVOID));
 
@@ -188,7 +193,8 @@ bool Rc7Hook::Disable() {
 		LPCSTR fnName = (LPCSTR)(modBase + funcNames[i]);
 		WORD fnOrd = (WORD)(funcNameOrds[i]);
 		DWORD fnRva = (DWORD)(funcAddrs[fnOrd]);
-
+		// incase the func in IAT was not found, do this
+		
 		if (!_strcmpi(fnName, this->ProcedureName)) {
 			DWORD oldProtection;
 			VirtualProtect(&(funcAddrs[fnOrd]), sizeof(DWORD), PAGE_READWRITE, &oldProtection);
