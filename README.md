@@ -56,5 +56,7 @@ void bypassAmsi() {
 }
 ```
 
+## Issues
+- x86 build's unhooking produces ``ERROR_ACCESS_VIOLATION``
 ## Credits
 [EAT Hooking Article](https://www.codereversing.com/archives/598) by [Codereversing](https://www.codereversing.com/archives/598).
