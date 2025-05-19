@@ -1,4 +1,6 @@
-#include "MsgBoxHook.hpp"
+#include<iostream>
+
+#include "../examples.h"
 
 typedef int (WINAPI* typeMessageBoxA) (
 	HWND hWnd,
@@ -14,10 +16,15 @@ int hookMessageBoxA(HWND hWnd, LPCSTR lpText, LPCSTR lpCaption, UINT uType) {
 	return orgMessageBoxA(hWnd, "Rc7Hooked!", ">:)", uType);
 }
 
-void RunMsgBoxHookExample() {
+void examples::runMessageBoxAHook() {
 	Rc7Hook msgboxHook { "user32.dll", "MessageBoxA", hookMessageBoxA, (PVOID*)&orgMessageBoxA };
 	
-	msgboxHook.Enable();
+	if (msgboxHook.Enable()) {
+		printf("[+] Enabled MessageBoxA Hook!\n");
+	}
+	else {
+		printf("[-] Failed to Enable MessageBoxA Hook.\n");
+	}
 
 	MessageBoxA(
 		NULL,
@@ -26,7 +33,15 @@ void RunMsgBoxHookExample() {
 		0
 	);
 
-	msgboxHook.Disable();
+	printf("[*] Press a Key to Unhook.\n");
+	getchar();
+
+	if (msgboxHook.Disable()) {
+		printf("[+] Disabled MessageBoxA Hook!\n");
+	}
+	else {
+		printf("[-] Failed to Disable MessageBoxA Hook.\n");
+	}
 
 	MessageBoxA(
 		NULL,

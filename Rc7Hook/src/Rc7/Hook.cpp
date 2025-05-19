@@ -1,7 +1,6 @@
 #include "Hook.hpp"
 #include<iostream>
 
-
 PVOID AllocateJmpNearModule(PVOID modAddress, SIZE_T payloadSize) {
 	MODULEINFO modInfo;
 	GetModuleInformation(GetCurrentProcess(), (HMODULE)modAddress, &modInfo, sizeof(MODULEINFO));
@@ -9,32 +8,36 @@ PVOID AllocateJmpNearModule(PVOID modAddress, SIZE_T payloadSize) {
 	PVOID allocAddress = (PVOID)((DWORD_PTR)modInfo.lpBaseOfDll + modInfo.SizeOfImage);
 	PVOID allocatedAddress = NULL;
 
-	SIZE_T allocAlign = 0x10000;
-
 	while (!allocatedAddress) {
-
 		allocatedAddress = VirtualAlloc(allocAddress, payloadSize, MEM_RESERVE | MEM_COMMIT, PAGE_EXECUTE_READWRITE);
-		allocAddress = (PVOID)((DWORD_PTR)allocAddress + allocAlign);
+		allocAddress = (PVOID)((DWORD_PTR)allocAddress + NEAR_EAT_ALLOCATE_ALIGN);
 	}
 
 	return allocatedAddress;
 }
 
 Rc7Hook::Rc7Hook(LPCSTR ModuleName, LPCSTR ProcedureName, PVOID HookFunction, PVOID* OriginalFunction) {
-
 	this->ModuleName = ModuleName;
 	this->ProcedureName = ProcedureName;
 	this->HookFunction = HookFunction;
+
 	this->OriginalFunction = OriginalFunction;
+	this->OriginalRva = 0;
 
 	this->peImage = ParsePeImage(NULL);
 	this->modImage = ParsePeImage(ModuleName);
 
+	this->state = new HookState{false, false};
+}
+
+Rc7Hook::~Rc7Hook() {
+	delete this->state;
 }
 
 bool Rc7Hook::Enable() {
 	Pe peImage = this->peImage;
-	
+	auto state = this->state;
+
 	auto peBase = (DWORD_PTR)peImage.ImageBase;
 	auto importDescriptor = peImage.ImportDescriptor;
 
@@ -60,11 +63,13 @@ bool Rc7Hook::Enable() {
 					(*this->OriginalFunction) = (PVOID)firstThunk->u1.Function;
 
 					DWORD oldProtection;
-					VirtualProtect(&firstThunk->u1.Function, 8, PAGE_READWRITE, &oldProtection);
+					VirtualProtect(&firstThunk->u1.Function, sizeof(PVOID), PAGE_READWRITE, &oldProtection);
 
 					firstThunk->u1.Function = (ULONGLONG)this->HookFunction;
 					
-					VirtualProtect(&firstThunk->u1.Function, 8, oldProtection, &oldProtection);
+					VirtualProtect(&firstThunk->u1.Function, sizeof(PVOID), oldProtection, &oldProtection);
+
+					state->isIatHooked = true;
 
 					break;
 				}
@@ -78,7 +83,6 @@ bool Rc7Hook::Enable() {
 	}
 
 	// Hook EAT //
-
 	Pe peModule = this->modImage;
 
 	auto exportDirectory = peModule.ExportDirectory;
@@ -90,8 +94,11 @@ bool Rc7Hook::Enable() {
 
 	PVOID hookFunction = this->HookFunction;
 
-	BYTE jmpByteArray[12] = { 0x48, 0xB8, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0xFF, 0xE0 };
-
+	#ifdef _WIN64
+		BYTE jmpByteArray[12] = { 0x48, 0xB8, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0xFF, 0xE0 }; // mov rax; jmp rax
+	#else
+		BYTE jmpByteArray[7] = { 0xB8, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xE0 }; // mov eax; jmp eax
+	#endif
 	
 	for (size_t i = 0; i < exportDirectory->NumberOfFunctions; i++)
 	{
@@ -103,11 +110,6 @@ bool Rc7Hook::Enable() {
 
 			this->OriginalRva = fnRva;
 
-			// incase the func in IAT was not found, do this
-			if (!(*this->OriginalFunction)) {
-				(*this->OriginalFunction) = (PVOID)(modBase + fnRva);
-			}
-			
 			PVOID jmpAddr = AllocateJmpNearModule(peModule.ImageBase, sizeof(jmpByteArray));
 			memcpy(&jmpByteArray[2], &hookFunction, sizeof(PVOID));
 
@@ -122,24 +124,29 @@ bool Rc7Hook::Enable() {
 
 			VirtualProtect(&(funcAddrs[fnOrd]), sizeof(DWORD), oldProtection, &oldProtection);
 
-			break;
+			state->isEatHooked = true;
 
+			break;
 		}
 	}
 	
-
-	return true;
+	return state->isIatHooked || state->isEatHooked;
 }
 
 
 bool Rc7Hook::Disable() {
 
 	Pe peImage = this->peImage;
+	auto state = this->state;
+
+	if (!state->isIatHooked && !state->isEatHooked) {
+		return false; // no hooked data directory entries, return
+	}
 
 	auto peBase = (DWORD_PTR)peImage.ImageBase;
 	auto importDescriptor = peImage.ImportDescriptor;
 
-	// Restore IAT //
+	// Restore IAT (if it was hooked) //
 	while (importDescriptor->Name != NULL) {
 
 		LPCSTR libName = (LPCSTR)(peBase + importDescriptor->Name);
@@ -153,17 +160,17 @@ bool Rc7Hook::Disable() {
 			firstThunk = (PIMAGE_THUNK_DATA)(peBase + importDescriptor->FirstThunk);
 
 			while (originalFirstThunk->u1.AddressOfData != NULL) {
-
 				PIMAGE_IMPORT_BY_NAME funcName = (PIMAGE_IMPORT_BY_NAME)(peBase + originalFirstThunk->u1.AddressOfData);
 
-				if (!_strcmpi(funcName->Name, this->ProcedureName)) {
-
+				if (!_strcmpi(funcName->Name, this->ProcedureName) && state->isIatHooked) {
 					DWORD oldProtection;
-					VirtualProtect(&firstThunk->u1.Function, 8, PAGE_READWRITE, &oldProtection);
+					VirtualProtect(&firstThunk->u1.Function, sizeof(PVOID), PAGE_READWRITE, &oldProtection);
 
 					firstThunk->u1.Function = (ULONGLONG)(*this->OriginalFunction);
-					
-					VirtualProtect(&firstThunk->u1.Function, 8, oldProtection, &oldProtection);
+
+					VirtualProtect(&firstThunk->u1.Function, sizeof(PVOID), oldProtection, &oldProtection);
+
+					state->isIatHooked = false;
 
 					break;
 				}
@@ -176,9 +183,7 @@ bool Rc7Hook::Disable() {
 		importDescriptor++;
 	}
 
-
-	// Restore EAT //
-
+	// Restore EAT (if it was hooked) //
 	Pe peModule = this->modImage;
 
 	auto exportDirectory = peModule.ExportDirectory;
@@ -188,26 +193,25 @@ bool Rc7Hook::Disable() {
 	PDWORD funcAddrs = (PDWORD)(modBase + exportDirectory->AddressOfFunctions);
 	PWORD funcNameOrds = (PWORD)(modBase + exportDirectory->AddressOfNameOrdinals);
 
-	for (size_t i = 0; i < exportDirectory->NumberOfFunctions; i++)
+	for (size_t i = 0; i < exportDirectory->NumberOfNames; i++)
 	{
 		LPCSTR fnName = (LPCSTR)(modBase + funcNames[i]);
 		WORD fnOrd = (WORD)(funcNameOrds[i]);
 		DWORD fnRva = (DWORD)(funcAddrs[fnOrd]);
-		// incase the func in IAT was not found, do this
-		
-		if (!_strcmpi(fnName, this->ProcedureName)) {
+
+		if (!_strcmpi(fnName, this->ProcedureName) && state->isEatHooked) {
 			DWORD oldProtection;
 			VirtualProtect(&(funcAddrs[fnOrd]), sizeof(DWORD), PAGE_READWRITE, &oldProtection);
 
 			funcAddrs[fnOrd] = this->OriginalRva;
 
 			VirtualProtect(&(funcAddrs[fnOrd]), sizeof(DWORD), oldProtection, &oldProtection);
-			break;
 
+			state->isEatHooked = false;
+
+			break;
 		}
 	}
 
-
-	return true;
-
+	return !state->isIatHooked || !state->isEatHooked;
 }

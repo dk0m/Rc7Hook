@@ -24,7 +24,10 @@
     <ClCompile Include="src\Rc7\Pe.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="src\Examples\MsgBoxHook.cpp">
+    <ClCompile Include="src\Examples\MsgBoxHook\MsgBoxHook.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Examples\AmsiHook\AmsiHook.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
@@ -35,7 +38,7 @@
     <ClInclude Include="src\Rc7\Pe.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="src\Examples\MsgBoxHook.hpp">
+    <ClInclude Include="src\Examples\examples.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

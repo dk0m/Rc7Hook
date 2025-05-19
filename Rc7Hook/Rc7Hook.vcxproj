@@ -127,13 +127,14 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="src\Examples\MsgBoxHook.cpp" />
+    <ClCompile Include="src\Examples\AmsiHook\AmsiHook.cpp" />
+    <ClCompile Include="src\Examples\MsgBoxHook\MsgBoxHook.cpp" />
     <ClCompile Include="src\Rc7Hook.cpp" />
     <ClCompile Include="src\Rc7\Hook.cpp" />
     <ClCompile Include="src\Rc7\Pe.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="src\Examples\MsgBoxHook.hpp" />
+    <ClInclude Include="src\Examples\examples.h" />
     <ClInclude Include="src\Rc7\Hook.hpp" />
     <ClInclude Include="src\Rc7\Pe.h" />
   </ItemGroup>
